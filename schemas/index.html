@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+  <div id="chatBox" style="
+        border: 1px solid #ccc;
+        height: 200px;
+        overflow-y: auto;
+        padding: 5px;
+      "></div>
+
+  <input id="msg" placeholder="Type message..." />
+  <button onclick="sendMsg()">Send</button>
+
+  <script>
+    let ws;
+    const room = "game";
+
+    function startChat() {
+      const usernameInput = document.getElementById("username");
+      const chatBox = document.getElementById("chatBox");
+
+      if (!usernameInput.value) {
+        alert("Please enter a username first!");
+        return;
+      }
+
+      const username = usernameInput.value;
+      ws = new WebSocket(`ws://127.0.0.1:8000/chat/ws/${room}/${username}`);
+
+      ws.onopen = () => {
+        console.log("✅ Connected to WebSocket");
+        chatBox.innerHTML += `<p><b>Connected as ${username}</b></p>`;
+      };
+
+      ws.onmessage = (event) => {
+        chatBox.innerHTML += `<p>${event.data}</p>`;
+        chatBox.scrollTop = chatBox.scrollHeight; // auto-scroll
+      };
+
+      ws.onclose = () => {
+        chatBox.innerHTML += `<p><i>Connection closed.</i></p>`;
+      };
+    }
+
+    function sendMsg() {
+      const msg = document.getElementById("msg").value;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(msg);
+        document.getElementById("msg").value = "";
+      } else {
+        alert("WebSocket is not connected!");
+      }
+    }
+
+    document.getElementById("startChat").addEventListener("click", startChat);
+  </script>
+</body>
+
+</html>

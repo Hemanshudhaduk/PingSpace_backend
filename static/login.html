@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PingSpace — Login</title>
+
+    <style>
+      :root {
+        --bg: #0f1724;
+        --card: #0b1220;
+        --accent: #5eead4;
+        --muted: #94a3b8;
+        --white: #e6eef8;
+        --error: #ff6b6b;
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(
+            1000px 600px at 10% 10%,
+            rgba(94, 234, 212, 0.06),
+            transparent 8%
+          ),
+          linear-gradient(180deg, #071022 0%, #08132a 100%);
+        color: var(--white);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      .card {
+        width: clamp(300px, 420px, 520px);
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.02),
+          rgba(255, 255, 255, 0.01)
+        );
+        border-radius: 12px;
+        padding: 28px;
+        box-shadow: 0 6px 30px rgba(2, 6, 23, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.03);
+      }
+
+      .logo {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .logo .dot {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--accent), #60a5fa);
+        box-shadow: 0 4px 18px rgba(46, 229, 197, 0.12),
+          inset 0 -6px 18px rgba(255, 255, 255, 0.02);
+      }
+      h1 {
+        margin: 0;
+        font-size: 20px;
+      }
+      p.lead {
+        color: var(--muted);
+        margin: 6px 0 18px;
+        font-size: 13px;
+      }
+
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      label {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .input {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.03);
+        padding: 12px 14px;
+        border-radius: 10px;
+        color: var(--white);
+        outline: none;
+        font-size: 14px;
+      }
+      .input:focus {
+        box-shadow: 0 6px 18px rgba(59, 130, 246, 0.08);
+        border-color: rgba(96, 165, 250, 0.18);
+      }
+
+      .row {
+        display: flex;
+        gap: 12px;
+      }
+      .row .input {
+        flex: 1;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-top: 6px;
+      }
+      button.primary {
+        background: linear-gradient(90deg, var(--accent), #60a5fa);
+        color: #042028;
+        border: none;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 6px 18px rgba(94, 234, 212, 0.08);
+      }
+      button.primary[disabled] {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      .hint {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .error {
+        color: var(--error);
+        font-size: 13px;
+        margin-top: 6px;
+      }
+
+      .small {
+        font-size: 12px;
+        color: var(--muted);
+        text-align: center;
+        margin-top: 14px;
+      }
+      a.link {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="main" aria-labelledby="loginTitle">
+      <div class="logo" aria-hidden="true">
+        <div class="dot"></div>
+        <div>
+          <h1 id="loginTitle">PingSpace</h1>
+          <p class="lead">Quickly join a room and chat in realtime.</p>
+        </div>
+      </div>
+
+      <form id="loginForm" autocomplete="off" novalidate>
+        <div>
+          <label for="username">Username</label>
+          <input
+            id="username"
+            name="username"
+            class="input"
+            type="text"
+            placeholder="your display name"
+            required
+          />
+        </div>
+
+        <div>
+          <label for="password"
+            >Password
+            <span style="font-size: 12px; color: var(--muted)">
+              (optional for demo)</span
+            ></label
+          >
+          <input
+            id="password"
+            name="password"
+            class="input"
+            type="password"
+            placeholder="secret"
+          />
+        </div>
+
+        <div class="row">
+          <div style="flex: 1">
+            <label for="room">Room</label>
+            <input
+              id="room"
+              name="room"
+              class="input"
+              type="text"
+              value="game"
+            />
+          </div>
+          <div style="width: 120px; display: flex; align-items: end">
+            <button id="startBtn" class="primary" type="submit">Start</button>
+          </div>
+        </div>
+
+        <div
+          id="error"
+          class="error"
+          role="alert"
+          aria-live="polite"
+          style="display: none"
+        ></div>
+        <div id="status" class="hint" style="margin-top: 6px"></div>
+      </form>
+
+      <div class="small">
+        By continuing you agree to the
+        <a class="link" href="#" onclick="alert('Not implemented')">terms</a>
+      </div>
+    </main>
+
+    <script>
+      (() => {
+        const form = document.getElementById("loginForm");
+        const usernameInput = document.getElementById("username");
+        const passwordInput = document.getElementById("password");
+        const roomInput = document.getElementById("room");
+        const errorEl = document.getElementById("error");
+        const statusEl = document.getElementById("status");
+        const startBtn = document.getElementById("startBtn");
+
+        // simple client-side validation
+        function validate() {
+          const u = usernameInput.value.trim();
+          const r = roomInput.value.trim();
+          if (!u) return "Please enter a username";
+          if (!r) return "Please enter a room name";
+          if (u.length < 2) return "Username must be at least 2 characters";
+          return null;
+        }
+
+        // Demo: try login via API; if API missing, fallback to local flow.
+        async function tryLogin(payload) {
+          // NOTE: adjust endpoint to your real auth route if present
+          const url = "/auth/login"; // default path; your backend may use something else
+          try {
+            const resp = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!resp.ok) {
+              const txt = await resp.text().catch(() => null);
+              throw new Error(txt || "HTTP " + resp.status);
+            }
+            return await resp.json();
+          } catch (err) {
+            // server not available or endpoint missing — treat as demo success
+            return { ok: false, fallback: true, token: "demo-token" };
+          }
+        }
+
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          errorEl.style.display = "none";
+          const v = validate();
+          if (v) {
+            errorEl.textContent = v;
+            errorEl.style.display = "block";
+            return;
+          }
+
+          const username = usernameInput.value.trim();
+          const room = roomInput.value.trim();
+          const password = passwordInput.value;
+
+          startBtn.disabled = true;
+          statusEl.textContent = "Signing in...";
+
+          try {
+            const res = await tryLogin({ username, password });
+            // store token if returned (demo or real)
+            if (res && res.token) localStorage.setItem("token", res.token);
+            localStorage.setItem("username", username);
+            localStorage.setItem("room", room);
+
+            statusEl.textContent = "Ready — opening chat...";
+            // redirect to chat UI (you can change path)
+            // If you use the earlier static page approach: /static/chat.html
+            setTimeout(() => {
+              window.location.href = `/static/index.html`;
+            }, 400);
+          } catch (err) {
+            errorEl.textContent = err.message || "Login failed";
+            errorEl.style.display = "block";
+            statusEl.textContent = "";
+          } finally {
+            startBtn.disabled = false;
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

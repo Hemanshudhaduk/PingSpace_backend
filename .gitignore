@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+chat.db
+Database/
+test_dns.py
+requiremets.txt
+models/tets.py
+.DS_Store
+*.swp
