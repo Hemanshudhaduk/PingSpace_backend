@@ -17,20 +17,25 @@ SECRET_KEY = "your-super-secret-key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  
 
-pwd_context = CryptContext(schemes=['bcrypt'], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
-router = APIRouter(tags=["auth"])
-
+import bcrypt
 import hashlib
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+router = APIRouter(tags=["auth"])
+
+# Use direct bcrypt instead of passlib to avoid initialization issues on Render
 def hash_password(password: str) -> str:
-    password = hashlib.sha256(password.encode()).hexdigest()
-    return pwd_context.hash(password)
+    # SHA-256 ensures the input to bcrypt is always 64 chars, bypassing the 72-byte limit.
+    pwd_hash = hashlib.sha256(password.encode()).hexdigest().encode()
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_hash, salt).decode()
 
 def verify_password(plain: str, hashed: str) -> bool:
-    plain = hashlib.sha256(plain.encode()).hexdigest()
-    return pwd_context.verify(plain, hashed)
+    pwd_hash = hashlib.sha256(plain.encode()).hexdigest().encode()
+    try:
+        return bcrypt.checkpw(pwd_hash, hashed.encode())
+    except Exception:
+        return False
 
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
