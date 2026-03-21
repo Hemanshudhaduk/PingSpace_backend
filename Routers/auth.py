@@ -22,11 +22,14 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 router = APIRouter(tags=["auth"])
 
+import hashlib
+
 def hash_password(password: str) -> str:
+    password = hashlib.sha256(password.encode()).hexdigest()
     return pwd_context.hash(password)
 
-
 def verify_password(plain: str, hashed: str) -> bool:
+    plain = hashlib.sha256(plain.encode()).hexdigest()
     return pwd_context.verify(plain, hashed)
 
 
