@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 # from dotenv import load_dotenv
 import os
-from mangum import Mangum
+
 # load_dotenv()
 from database import Base, engine
 import models.user
@@ -91,6 +91,3 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
-
-
-handler = Mangum(app)
