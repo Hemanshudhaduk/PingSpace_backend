@@ -10,3 +10,6 @@ bcrypt == 3.2.0
 websockets
 python-multipart
 psycopg2
+mangum
+uvicorn
+psycopg2-binary
