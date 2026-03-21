@@ -2,6 +2,10 @@ from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 from database import Base, engine
 import models.user
 import models.server
