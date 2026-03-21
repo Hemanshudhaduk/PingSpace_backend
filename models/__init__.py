@@ -1,4 +1,4 @@
-from Database.db import Base
+from database import Base
 
 from models.user import User
 from models.server import Server

@@ -7,7 +7,7 @@ from models.server import Server
 from models.room import Room 
 from models.message import Message
 from alembic import context
-from Database.db import Base
+from database import Base
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
