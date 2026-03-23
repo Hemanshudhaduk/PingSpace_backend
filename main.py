@@ -1,19 +1,17 @@
+import traceback
+from Routers import chat, auth, join_requests
+from database import Base, engine
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-# from dotenv import load_dotenv
-import os
 
-# load_dotenv()
-from database import Base, engine
-import models.user
-import models.server
-import models.room
-import models.message
-import models.serveruser
-from Routers import chat, auth
-import traceback
+# import models.user
+# import models.server
+# import models.room
+# import models.message
+# import models.serveruser
+# import models.join_request
 
 app = FastAPI()
 
@@ -83,6 +81,7 @@ except Exception as e:
 # Routers
 app.include_router(chat.router)
 app.include_router(auth.router)
+app.include_router(join_requests.router)
 
 @app.get("/")
 async def root():
