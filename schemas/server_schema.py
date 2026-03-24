@@ -11,7 +11,7 @@ class UsersList(BaseModel) :
     id : str
     
     username :str
-    role:str
+    role: str | None = None
     
 
 class ServerResponse(BaseModel):
