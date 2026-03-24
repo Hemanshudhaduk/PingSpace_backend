@@ -52,7 +52,9 @@ def create_join_request(
         raise HTTPException(status_code=400, detail="Join request already pending")
 
     # if invite was sent by admin, auto-accept
-    if request.sender_user_id == server.admin_id:
+    sender = request.sender_user_id or current_user.id
+
+    if sender == server.admin_id:
         # add membership directly
         server_user = ServerUser(server_id=request.server_id, user_id=current_user.id)
         db.add(server_user)
@@ -61,7 +63,7 @@ def create_join_request(
         new_request = JoinRequest(
             user_id=current_user.id,
             server_id=request.server_id,
-            sender_user_id=request.sender_user_id,
+            sender_user_id=sender,
             status="accepted",
         )
         db.add(new_request)
@@ -73,7 +75,7 @@ def create_join_request(
     new_request = JoinRequest(
         user_id=current_user.id,
         server_id=request.server_id,
-        sender_user_id=request.sender_user_id,
+        sender_user_id=sender,
         status="pending",
     )
     db.add(new_request)
