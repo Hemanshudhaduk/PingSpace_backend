@@ -315,8 +315,8 @@ def get_servers_for_user(user_id: str, db: Session = Depends(get_db), current_us
 
 @router.get('/server_user/{server_id}' , response_model=list[UsersList] ,tags= ['server user']) 
 def get_users_list(server_id ,db:Session = Depends(get_db)  , current_user : User = Depends(get_current_user)) :
-    userList = db.query(User.id , User.username , ServerUser.role).join(ServerUser , ServerUser.user_id == User.id).filter(ServerUser.server_id == server_id).all()
-    return userList
+    results = db.query(User.id , User.username , ServerUser.role).join(ServerUser , ServerUser.user_id == User.id).filter(ServerUser.server_id == server_id).all()
+    return [UsersList(id=r[0], username=r[1], role=r[2]) for r in results]
 
 @router.delete("/server_users/{su_id}" , tags = ['server user'])
 def delete_server_user(su_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
