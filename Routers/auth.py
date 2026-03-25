@@ -1,24 +1,25 @@
 # auth.py
 
+import bcrypt
+import asyncio
+import hashlib
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
+# from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from fastapi.security import OAuth2PasswordRequestForm
 
+from fastapi.security import OAuth2PasswordRequestForm
 from database import get_db
 from models.user import User
-from schemas.user_schema import UserOut, UserResponse , UserCreate
+from schemas.user_schema import  UserResponse , UserCreate
 
 
 SECRET_KEY = "your-super-secret-key" 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  
 
-import bcrypt
-import hashlib
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 router = APIRouter(tags=["auth"])
@@ -76,6 +77,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
                             headers={"WWW-Authenticate": "Bearer"})
     return user
 
+async def verify_password_async(plain: str, hashed: str) -> bool:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, verify_password, plain, hashed)
+
 
 @router.post("/signup", response_model=UserResponse)
 def signup(user: UserCreate, db: Session = Depends(get_db)):
@@ -93,11 +98,15 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.password):
+    if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    token = create_access_token(data={"sub": str(user.id) , "username" : user.username})
+    # ✅ Non-blocking — runs in thread pool
+    is_valid = await verify_password_async(form_data.password, user.password)
+    if not is_valid:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    token = create_access_token(data={"sub": str(user.id), "username": user.username})
     return {"access_token": token, "token_type": "bearer"}
-

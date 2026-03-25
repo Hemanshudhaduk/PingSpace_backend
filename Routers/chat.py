@@ -96,9 +96,12 @@ def create_server(data: ServerCreate, db: Session = Depends(get_db), current_use
 
 @router.get("/servers", response_model=list[ServerResponse] , tags = ['server'])
 def get_servers(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # servers where user is member
-    server_ids = [su.server_id for su in db.query(ServerUser).filter(ServerUser.user_id == current_user.id).all()]
-    return db.query(Server).filter(Server.id.in_(server_ids)).all()
+    return (
+        db.query(Server)
+        .join(ServerUser, ServerUser.server_id == Server.id)
+        .filter(ServerUser.user_id == current_user.id)
+        .all()
+    )
 
 
     
@@ -240,10 +243,28 @@ def post_message(payload: MessageCreate, db: Session = Depends(get_db), current_
     return new_msg
 
 @router.get("/messages/{room_id}", response_model=list[MessageResponse] , tags = ['message'])
-def get_history(room_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if not db.query(ServerUser).filter(ServerUser.user_id == current_user.id).first():
-        raise HTTPException(403, "Not a member of server")
-    return db.query(Message).filter(Message.room_id == room_id).order_by(Message.timestamp).all()
+def get_history(
+    room_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    before: str = Query(None),   # cursor for pagination
+    limit: int = Query(50, le=100)
+):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(404, "Room not found")
+    
+    if not db.query(ServerUser).filter(
+        ServerUser.user_id == current_user.id,
+        ServerUser.server_id == room.server_id
+    ).first():
+        raise HTTPException(403, "Not a member of this server")
+    query = db.query(Message).filter(Message.room_id == room_id)
+    if before:
+        query = query.filter(Message.timestamp < before)
+    
+    messages = query.order_by(Message.timestamp.desc()).limit(limit).all()
+    return list(reversed(messages))
 
 @router.delete("/messages/{message_id}", tags=['message'])
 def delete_message(message_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
