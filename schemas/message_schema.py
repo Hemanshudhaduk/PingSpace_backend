@@ -11,10 +11,10 @@ class MessageResponse(BaseModel):
     room_id: str
     sender: str
     content: str
-    created_at: datetime = Field(alias="timestamp")
+    timestamp: datetime 
 
     class Config:
         from_attributes = True
-        populate_by_name = True
+        # populate_by_name = True
 
     
