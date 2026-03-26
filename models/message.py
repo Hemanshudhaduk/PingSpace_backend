@@ -1,6 +1,6 @@
 from database import Base 
 from sqlalchemy import Column  ,ForeignKey ,  String , DateTime , Index
-from datetime import datetime
+from datetime import datetime,timezone
 # from sqlalchemy.orm import relationship
 import uuid
 class Message(Base) :
@@ -13,4 +13,4 @@ class Message(Base) :
     sender = Column(String , nullable=False)
     room_id = Column(String, ForeignKey('room.id'), nullable=False)
     content = Column(String , nullable=False)
-    timestamp = Column(DateTime , default=datetime.utcnow)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
