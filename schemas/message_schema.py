@@ -1,5 +1,5 @@
 # schemas/message_schema.py
-from pydantic import BaseModel
+from pydantic import BaseModel , Field
 from datetime import datetime
 
 class MessageCreate(BaseModel):
@@ -11,6 +11,10 @@ class MessageResponse(BaseModel):
     room_id: str
     sender: str
     content: str
+    created_at: datetime = Field(alias="timestamp")
 
     class Config:
         from_attributes = True
+        populate_by_name = True
+
+    
