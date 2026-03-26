@@ -12,6 +12,7 @@ from jose.exceptions import JWTError
 from sqlalchemy.orm import Session
 from database import get_db
 from jose import jwt
+from datetime import timezone
 
 from models.user import User
 from models.room import Room
@@ -655,7 +656,7 @@ async def chat_socket(
                 "id": new_msg.id,
                 "sender": username,
                 "content": msg_text,
-                "created_at": new_msg.timestamp.isoformat(),
+                "created_at": new_msg.timestamp.replace(tzinfo=timezone.utc).isoformat(),
             }
             await manager.broadcast(room_id, broadcast)
 
