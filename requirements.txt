@@ -9,3 +9,5 @@ python-multipart
 python-dotenv
 websockets
 alembic
+cloudinary 
+python-multipart

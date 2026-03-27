@@ -7,6 +7,9 @@ from fastapi import (
     WebSocketDisconnect,
     Query,
     status,
+    UploadFile,
+    File,
+    Form,
 )
 from jose.exceptions import JWTError
 from sqlalchemy.orm import Session
@@ -23,7 +26,7 @@ from models.serveruser import ServerUser
 from schemas.user_schema import UserOut, UserUpdate
 from schemas.room_schema import RoomCreate, RoomResponse, RoomUpdate
 from schemas.server_schema import ServerCreate, ServerResponse, ServerUpdate, UsersList
-from schemas.message_schema import MessageResponse, MessageCreate
+from schemas.message_schema import MessageResponse, MessageCreate, AttachmentResponse
 from schemas.server_user_schema import ServerUserCreate, ServerUserResponse
 from Routers.auth import hash_password
 
@@ -31,6 +34,23 @@ from ws.connection_manager import ConnectionManager
 from Routers.auth import get_current_user, SECRET_KEY, ALGORITHM
 from datetime import datetime, timedelta
 from collections import defaultdict
+
+
+# upload a documet apis..
+from models.attachment import Attachment
+from services.cloudinary_service import (
+    upload_to_cloudinary,
+    get_message_type,
+    MAX_IMAGE_SIZE,
+    MAX_FILE_SIZE,
+    MAX_VOICE_SIZE,
+    ALLOWED_IMAGE_TYPES,
+    ALLOWED_FILE_TYPES,
+    ALLOWED_AUDIO_TYPES,
+    ALLOWED_VIDEO_TYPES,
+    ALL_ALLOWED_TYPES,
+)
+
 
 router = APIRouter()
 manager = ConnectionManager()
@@ -394,7 +414,29 @@ def get_history(
         query = query.filter(Message.timestamp < before)
 
     messages = query.order_by(Message.timestamp.desc()).limit(limit).all()
-    return list(reversed(messages))
+
+    result = []
+
+    for msg in messages:
+        att = None
+        if msg.type != "text":
+            att_row = (
+                db.query(Attachment).filter(Attachment.message_id == msg.id).first()
+            )
+            if att_row:
+                att = AttachmentResponse.model_validate(att_row)
+        result.append(
+            MessageResponse(
+                id=msg.id,
+                room_id=msg.room_id,
+                sender=msg.sender,
+                content=msg.content,
+                type=msg.type,
+                timestamp=msg.timestamp,
+                attachment=att,
+            )
+        )
+    return result
 
 
 @router.delete("/messages/{message_id}", tags=["message"])
@@ -547,6 +589,99 @@ def delete_server_user(
     return {"detail": "Server user removed"}
 
 
+@router.post("/upload", tags=["upload"])
+async def upload_file(
+    file: UploadFile = File(...),
+    room_id: str = Form(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # 1. Validate mime type
+    mime_type = file.content_type or ""
+    if mime_type not in ALL_ALLOWED_TYPES:
+        raise HTTPException(400, f"File type not allowed: {mime_type}")
+
+    # 2. Read file and check size
+    file_bytes = await file.read()
+    file_size = len(file_bytes)
+
+    if mime_type in ALLOWED_IMAGE_TYPES and file_size > MAX_IMAGE_SIZE:
+        raise HTTPException(400, "Image too large. Max 10MB")
+    if mime_type in ALLOWED_AUDIO_TYPES and file_size > MAX_VOICE_SIZE:
+        raise HTTPException(400, "Voice too large. Max 10MB")
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(400, "File too large. Max 50MB")
+
+    # 3. Check membership
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(404, "Room not found")
+    if (
+        not db.query(ServerUser)
+        .filter(
+            ServerUser.user_id == current_user.id,
+            ServerUser.server_id == room.server_id,
+        )
+        .first()
+    ):
+        raise HTTPException(403, "Not a member of this server")
+
+    # 4. Upload to Cloudinary
+    try:
+        upload_result = upload_to_cloudinary(
+            file_bytes, mime_type, file.filename or "file"
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Upload failed: {str(e)}")
+
+    msg_type = get_message_type(mime_type)
+
+    # 5. Save message row
+    new_msg = Message(
+        room_id=room_id,
+        sender=current_user.username,
+        content=None,
+        type=msg_type,
+    )
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
+
+    # 6. Save attachment row
+    attachment = Attachment(
+        message_id=new_msg.id,
+        file_url=upload_result["file_url"],
+        file_name=file.filename or "file",
+        file_size=file_size,
+        mime_type=mime_type,
+        width=upload_result.get("width"),
+        height=upload_result.get("height"),
+        duration=upload_result.get("duration"),
+    )
+    db.add(attachment)
+    db.commit()
+    db.refresh(attachment)
+
+    broadcast = {
+        "id": new_msg.id,
+        "sender": current_user.username,
+        "content": None,
+        "type": msg_type,
+        "created_at": new_msg.timestamp.replace(tzinfo=timezone.utc).isoformat(),
+        "attachment": {
+            "file_url": attachment.file_url,
+            "file_name": attachment.file_name,
+            "file_size": attachment.file_size,
+            "mime_type": attachment.mime_type,
+            "width": attachment.width,
+            "height": attachment.height,
+            "duration": attachment.duration,
+        },
+    }
+    await manager.broadcast(room_id, broadcast)
+    return broadcast
+
+
 # ------------------------
 # WEBSOCKET CHAT
 # ------------------------
@@ -652,11 +787,13 @@ async def chat_socket(
             db.add(new_msg)
             db.commit()
             db.refresh(new_msg)
-            broadcast  = {
+            broadcast = {
                 "id": new_msg.id,
                 "sender": username,
                 "content": msg_text,
-                "created_at": new_msg.timestamp.replace(tzinfo=timezone.utc).isoformat(),
+                "created_at": new_msg.timestamp.replace(
+                    tzinfo=timezone.utc
+                ).isoformat(),
             }
             await manager.broadcast(room_id, broadcast)
 

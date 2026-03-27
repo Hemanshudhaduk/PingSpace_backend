@@ -1,10 +1,13 @@
 import traceback
+# main.py — add this import so the table gets created
+import models.attachment
 from Routers import chat, auth, join_requests
 from database import Base, engine
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+
 
 # import models.user
 # import models.server
