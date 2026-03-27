@@ -9,12 +9,12 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 
-# import models.user
-# import models.server
-# import models.room
-# import models.message
-# import models.serveruser
-# import models.join_request
+import models.user
+import models.server
+import models.room
+import models.message
+import models.serveruser
+import models.join_request
 
 app = FastAPI()
 

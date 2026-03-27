@@ -15,7 +15,7 @@ from jose.exceptions import JWTError
 from sqlalchemy.orm import Session
 from database import get_db
 from jose import jwt
-from datetime import timezone
+# from datetime import timezone
 
 from models.user import User
 from models.room import Room
@@ -32,7 +32,7 @@ from Routers.auth import hash_password
 
 from ws.connection_manager import ConnectionManager
 from Routers.auth import get_current_user, SECRET_KEY, ALGORITHM
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta ,timezone
 from collections import defaultdict
 
 
@@ -45,9 +45,7 @@ from services.cloudinary_service import (
     MAX_FILE_SIZE,
     MAX_VOICE_SIZE,
     ALLOWED_IMAGE_TYPES,
-    ALLOWED_FILE_TYPES,
     ALLOWED_AUDIO_TYPES,
-    ALLOWED_VIDEO_TYPES,
     ALL_ALLOWED_TYPES,
 )
 
