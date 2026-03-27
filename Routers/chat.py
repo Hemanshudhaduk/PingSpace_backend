@@ -45,7 +45,9 @@ from services.cloudinary_service import (
     MAX_FILE_SIZE,
     MAX_VOICE_SIZE,
     ALLOWED_IMAGE_TYPES,
+    ALLOWED_FILE_TYPES,
     ALLOWED_AUDIO_TYPES,
+    ALLOWED_VIDEO_TYPES,
     ALL_ALLOWED_TYPES,
 )
 

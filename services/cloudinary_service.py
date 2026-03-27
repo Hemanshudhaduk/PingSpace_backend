@@ -65,3 +65,10 @@ def upload_to_cloudinary(file_bytes: bytes, mime_type: str, filename: str) -> di
         "height": result.get("height"),
         "duration": result.get("duration"),
     }
+
+ALL_ALLOWED_TYPES = set().union(
+    ALLOWED_IMAGE_TYPES,
+    ALLOWED_FILE_TYPES,
+    ALLOWED_AUDIO_TYPES,
+    ALLOWED_VIDEO_TYPES,
+)
