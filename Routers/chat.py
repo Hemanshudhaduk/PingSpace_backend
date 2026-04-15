@@ -1,4 +1,5 @@
 # Routers/main.py
+import json
 from fastapi import (
     APIRouter,
     Depends,
@@ -774,6 +775,41 @@ async def chat_socket(
         while True:
             msg_text = await websocket.receive_text()
 
+            # Handle typing events
+            try:
+                msg_data = json.loads(msg_text)
+                
+                # Handle typing indicator
+                if msg_data.get("type") == "typing":
+                    manager.set_typing(room_id, username)
+                    typing_users = manager.get_typing_users(room_id)
+                    await manager.broadcast(room_id, {
+                        "type": "typing",
+                        "users": typing_users
+                    })
+                    continue
+                
+                # Handle stop typing
+                if msg_data.get("type") == "stop_typing":
+                    manager.clear_typing(room_id, username)
+                    typing_users = manager.get_typing_users(room_id)
+                    await manager.broadcast(room_id, {
+                        "type": "typing",
+                        "users": typing_users
+                    })
+                    continue
+                
+                # Handle regular message
+                if msg_data.get("type") == "message":
+                    msg_text = msg_data.get("content", "")
+                else:
+                    # If it's not a special message type, treat original text as content
+                    msg_text = msg_text
+                    
+            except json.JSONDecodeError:
+                # Plain text message - continue with original msg_text
+                pass
+
             if not rate_limiter.can_send_message(username):
                 await websocket.send_json(
                     {
@@ -782,6 +818,10 @@ async def chat_socket(
                     }
                 )
                 continue
+
+            # Clear typing status when message is sent
+            manager.clear_typing(room_id, username)
+            typing_users = manager.get_typing_users(room_id)
 
             new_msg = Message(room_id=room_obj.id, sender=username, content=msg_text)
             db.add(new_msg)
@@ -796,6 +836,12 @@ async def chat_socket(
                 ).isoformat(),
             }
             await manager.broadcast(room_id, broadcast)
+            
+            # Send typing update (remove current user from typing list)
+            await manager.broadcast(room_id, {
+                "type": "typing",
+                "users": typing_users
+            })
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
