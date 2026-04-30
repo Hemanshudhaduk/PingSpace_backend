@@ -11,3 +11,4 @@ class User(Base):
     password = Column(String)
     server = relationship("Server", back_populates='admin')
     servers = relationship("ServerUser" , back_populates='user')
+    room_memberships = relationship("RoomMember", back_populates='user', cascade="all, delete-orphan")
