@@ -20,12 +20,14 @@ from jose import jwt
 
 from models.user import User
 from models.room import Room
+from models.room_member import RoomMember
 from models.message import Message
 from models.server import Server
 from models.serveruser import ServerUser
 
 from schemas.user_schema import UserOut, UserUpdate
 from schemas.room_schema import RoomCreate, RoomResponse, RoomUpdate
+from schemas.room_member_schema import RoomMemberAdd, RoomMemberResponse
 from schemas.server_schema import ServerCreate, ServerResponse, ServerUpdate, UsersList
 from schemas.message_schema import MessageResponse, MessageCreate, AttachmentResponse
 from schemas.server_user_schema import ServerUserCreate, ServerUserResponse
@@ -55,6 +57,53 @@ from services.cloudinary_service import (
 
 router = APIRouter()
 manager = ConnectionManager()
+
+
+def retrieve_server(db: Session, server_id: str) -> Server | None:
+    return db.query(Server).filter(Server.id == server_id).first()
+
+
+def is_server_member(db: Session, server_id: str, user_id: str) -> bool:
+    return (
+        db.query(ServerUser)
+        .filter(ServerUser.server_id == server_id, ServerUser.user_id == user_id)
+        .first()
+        is not None
+    )
+
+
+def is_server_admin(db: Session, server_id: str, user_id: str) -> bool:
+    server = retrieve_server(db, server_id)
+    return bool(server and server.admin_id == user_id)
+
+
+def is_room_member(db: Session, room_id: str, user_id: str) -> bool:
+    return (
+        db.query(RoomMember)
+        .filter(RoomMember.room_id == room_id, RoomMember.user_id == user_id)
+        .first()
+        is not None
+    )
+
+
+def can_access_room(db: Session, room: Room, user_id: str) -> bool:
+    if not is_server_member(db, room.server_id, user_id):
+        return False
+    if room.visibility != "private":
+        return True
+    return is_server_admin(db, room.server_id, user_id) or is_room_member(
+        db, room.id, user_id
+    )
+
+
+def require_room_access(db: Session, room: Room, user: User) -> None:
+    if not can_access_room(db, room, user.id):
+        raise HTTPException(status_code=403, detail="Not allowed to access this room")
+
+
+def require_server_admin(db: Session, server_id: str, user: User) -> None:
+    if not is_server_admin(db, server_id, user.id):
+        raise HTTPException(status_code=403, detail="Only server admin allowed")
 
 
 # ------------------------
@@ -241,22 +290,14 @@ def create_room(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    server = db.query(Server.admin_id).filter(Server.id == data.server_id).first()
-    admin_check = (
-        db.query(ServerUser)
-        .filter(
-            ServerUser.server_id == data.server_id,
-            ServerUser.user_id == current_user.id,
-            ServerUser.role == "admin",
-        )
-        .first()
-    )
+    server = retrieve_server(db, data.server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
-    # only members can create rooms
-
-    if not admin_check:
-        raise HTTPException(status_code=403, detail="only admin can make the room")
+    require_server_admin(db, data.server_id, current_user)
+    if data.visibility not in {"public", "private"}:
+        raise HTTPException(
+            status_code=400, detail="visibility must be public or private"
+        )
     if (
         db.query(Room)
         .filter(Room.server_id == data.server_id, Room.name == data.name)
@@ -264,11 +305,17 @@ def create_room(
     ):
         raise HTTPException(status_code=400, detail="Room already exists")
     new_room = Room(
-        name=data.name, description=data.description or "", server_id=data.server_id
+        name=data.name,
+        description=data.description or "",
+        visibility=data.visibility,
+        server_id=data.server_id,
     )
     db.add(new_room)
     db.commit()
     db.refresh(new_room)
+    if new_room.visibility == "private":
+        db.add(RoomMember(room_id=new_room.id, user_id=current_user.id, role="admin"))
+        db.commit()
     return new_room
 
 
@@ -278,15 +325,18 @@ def get_rooms_by_server(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if (
-        not db.query(ServerUser)
-        .filter(
-            ServerUser.server_id == server_id, ServerUser.user_id == current_user.id
-        )
-        .first()
-    ):
+    if not is_server_member(db, server_id, current_user.id):
         raise HTTPException(status_code=403, detail="Not a member of server")
-    return db.query(Room).filter(Room.server_id == server_id).all()
+
+    rooms = db.query(Room).filter(Room.server_id == server_id).all()
+    if is_server_admin(db, server_id, current_user.id):
+        return rooms
+
+    return [
+        room
+        for room in rooms
+        if room.visibility != "private" or is_room_member(db, room.id, current_user.id)
+    ]
 
 
 @router.get("/room/{room_id}", response_model=RoomResponse, tags=["room"])
@@ -298,15 +348,9 @@ def get_room(
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise HTTPException(404, "Room not found")
-    if (
-        not db.query(ServerUser)
-        .filter(
-            ServerUser.server_id == room.server_id,
-            ServerUser.user_id == current_user.id,
-        )
-        .first()
-    ):
+    if not is_server_member(db, room.server_id, current_user.id):
         raise HTTPException(status_code=403, detail="Not a member of server")
+    require_room_access(db, room, current_user)
     return room
 
 
@@ -320,13 +364,15 @@ def update_room(
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise HTTPException(404, "Room not found")
-    server = db.query(Server).filter(Server.id == room.server_id).first()
-    if server.admin_id != current_user.id:
-        raise HTTPException(403, "Only server admin can update rooms")
+    require_server_admin(db, room.server_id, current_user)
+    if payload.visibility is not None and payload.visibility not in {"public", "private"}:
+        raise HTTPException(status_code=400, detail="visibility must be public or private")
     if payload.name:
         room.name = payload.name
     if payload.description is not None:
         room.description = payload.description
+    if payload.visibility:
+        room.visibility = payload.visibility
     db.add(room)
     db.commit()
     db.refresh(room)
@@ -342,13 +388,81 @@ def delete_room(
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise HTTPException(404, "Room not found")
-    server = db.query(Server).filter(Server.id == room.server_id).first()
-    if server.admin_id != current_user.id:
-        raise HTTPException(403, "Only server admin can delete rooms")
+    require_server_admin(db, room.server_id, current_user)
     db.query(Message).filter(Message.room_id == room.id).delete()
     db.delete(room)
     db.commit()
     return {"detail": "Room deleted successfully"}
+
+
+# ------------------------
+# ROOM MEMBERS - PRIVATE ROOMS
+# ------------------------
+@router.get(
+    "/rooms/{room_id}/members", response_model=list[RoomMemberResponse], tags=["room member"]
+)
+def get_room_members(
+    room_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    require_server_admin(db, room.server_id, current_user)
+    return db.query(RoomMember).filter(RoomMember.room_id == room_id).all()
+
+
+@router.post(
+    "/rooms/{room_id}/members", response_model=RoomMemberResponse, tags=["room member"]
+)
+def add_room_member(
+    room_id: str,
+    payload: RoomMemberAdd,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    require_server_admin(db, room.server_id, current_user)
+    if not is_server_member(db, room.server_id, payload.user_id):
+        raise HTTPException(status_code=400, detail="User must be in the server first")
+    existing = (
+        db.query(RoomMember)
+        .filter(RoomMember.room_id == room_id, RoomMember.user_id == payload.user_id)
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="User already has access to this room")
+    room_member = RoomMember(room_id=room_id, user_id=payload.user_id, role=payload.role)
+    db.add(room_member)
+    db.commit()
+    db.refresh(room_member)
+    return room_member
+
+
+@router.delete("/rooms/{room_id}/members/{user_id}", tags=["room member"])
+def remove_room_member(
+    room_id: str,
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    require_server_admin(db, room.server_id, current_user)
+    room_member = (
+        db.query(RoomMember)
+        .filter(RoomMember.room_id == room_id, RoomMember.user_id == user_id)
+        .first()
+    )
+    if not room_member:
+        raise HTTPException(status_code=404, detail="Room member not found")
+    db.delete(room_member)
+    db.commit()
+    return {"detail": "Room member removed"}
 
 
 # ------------------------
@@ -363,18 +477,9 @@ def post_message(
     room = db.query(Room).filter(Room.id == payload.room_id).first()
     if not room:
         raise HTTPException(404, "Room not found")
-    membership = (
-        db.query(ServerUser)
-        .filter(
-            ServerUser.user_id == current_user.id,
-            ServerUser.server_id == room.server_id,
-        )
-        .first()
-    )
-    if not membership:
-        raise HTTPException(status_code=401, detail="not member of a server")
+    require_room_access(db, room, current_user)
 
-    if not payload.content or len(payload.content) > 0:
+    if not payload.content or payload.content.strip() == "":
         raise HTTPException(400, "Message content invalid")
     print("This is the payload : ", payload)
     new_msg = Message(
@@ -400,16 +505,7 @@ def get_history(
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise HTTPException(404, "Room not found")
-
-    if (
-        not db.query(ServerUser)
-        .filter(
-            ServerUser.user_id == current_user.id,
-            ServerUser.server_id == room.server_id,
-        )
-        .first()
-    ):
-        raise HTTPException(403, "Not a member of this server")
+    require_room_access(db, room, current_user)
     query = db.query(Message).filter(Message.room_id == room_id)
     if before:
         query = query.filter(Message.timestamp < before)
@@ -453,6 +549,7 @@ def delete_message(
     room = db.query(Room).filter(Room.id == msg.room_id).first()
     if not room:
         raise HTTPException(404, "Room not found")
+    require_room_access(db, room, current_user)
 
     is_sender = msg.sender == current_user.username
     is_admin = (
@@ -577,17 +674,22 @@ def delete_server_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    su = db.query(ServerUser).filter(ServerUser.id == su_id).first()
+    su = db.query(ServerUser).filter(ServerUser.user_id == su_id).first()
+    # print("This is the su to be deleted : ", su)
     if not su:
         raise HTTPException(404, "ServerUser not found")
     server = db.query(Server).filter(Server.id == su.server_id).first()
+    # print("hello still reachibing here...........")
+    private_room_mebers= db.query(Room).filter(Room.server_id == su.server_id, Room.visibility == "private").first()
+    # print("this is a private room: " , private_room_mebers)
     if server.admin_id != current_user.id and current_user.id != su.user_id:
         raise HTTPException(
             403, "Only admin or the user themselves can remove membership"
         )
+    # db.delete(private_room_mebers)
     db.delete(su)
     db.commit()
-    return {"detail": "Server user removed"}
+    return {"detail": "User removed from server successfully"}
 
 
 @router.post("/upload", tags=["upload"])
@@ -617,15 +719,7 @@ async def upload_file(
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise HTTPException(404, "Room not found")
-    if (
-        not db.query(ServerUser)
-        .filter(
-            ServerUser.user_id == current_user.id,
-            ServerUser.server_id == room.server_id,
-        )
-        .first()
-    ):
-        raise HTTPException(403, "Not a member of this server")
+    require_room_access(db, room, current_user)
 
     # 4. Upload to Cloudinary
     try:
@@ -754,17 +848,9 @@ async def chat_socket(
         )
         return
 
-    membership = (
-        db.query(ServerUser)
-        .filter(
-            ServerUser.user_id == user.id, ServerUser.server_id == room_obj.server_id
-        )
-        .first()
-    )
-
-    if not membership:
+    if not can_access_room(db, room_obj, user.id):
         await websocket.close(
-            code=status.WS_1008_POLICY_VIOLATION, reason="Not a member of this server"
+            code=status.WS_1008_POLICY_VIOLATION, reason="Not allowed to access this room"
         )
         return
 
